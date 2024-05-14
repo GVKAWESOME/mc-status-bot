@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 
-from mcstatus import MinecraftServer, MinecraftBedrockServer
+from mcstatus import JavaServer, BedrockServer
 import asyncio
 import functools
 import logging
@@ -43,9 +43,9 @@ class Status(commands.Cog):
 
         server_type = bot.config["server-type"].lower()
         if server_type == "java":
-            Server = self.ServerType = MinecraftServer
+            Server = self.ServerType = JavaServer
         elif server_type == "bedrock":
-            Server = self.ServerType = MinecraftBedrockServer
+            Server = self.ServerType = BedrockServer
         else:
             raise InvalidServerType(bot.config["server-type"])
 
@@ -71,7 +71,7 @@ class Status(commands.Cog):
         """Get player list for the current server.
 
         At the moment, this is is only available for Java servers."""
-        if self.ServerType is MinecraftBedrockServer:
+        if self.ServerType is BedrockServer:
             return await ctx.send("Sorry, this functionality is only available for Java servers.")
 
         partial = functools.partial(self.server.query)
@@ -125,10 +125,10 @@ class Status(commands.Cog):
             status_text = "Offline"
 
         else:
-            if self.ServerType is MinecraftServer:
+            if self.ServerType is JavaServer:
                 players_online = status.players.online
                 players_max = status.players.max
-            elif self.ServerType is MinecraftBedrockServer:
+            elif self.ServerType is BedrockServer:
                 players_online = status.players_online
                 players_max = status.players_max
 
@@ -159,7 +159,7 @@ class Status(commands.Cog):
         file = None
 
         if status:
-            if self.ServerType is MinecraftServer:
+            if self.ServerType is JavaServer:
                 version = status.version.name
 
                 favicon = self.resolve_favicon(status)
@@ -167,7 +167,7 @@ class Status(commands.Cog):
                     em.set_thumbnail(url="attachment://favicon.png")
                     file = favicon
 
-            elif self.ServerType is MinecraftBedrockServer:
+            elif self.ServerType is BedrockServer:
                 version = f"{status.version.brand}: {status.version.protocol}"
 
                 if status.gamemode:
@@ -238,9 +238,9 @@ class Status(commands.Cog):
         log.info(f"Set status to {status}: {text}")
 
     def _parse_motd(self, server):
-        if self.ServerType is MinecraftServer:
+        if self.ServerType is JavaServer:
             motd = server.description
-        elif self.ServerType is MinecraftBedrockServer:
+        elif self.ServerType is BedrockServer:
             motd = server.motd
 
         if isinstance(motd, dict):
@@ -265,10 +265,10 @@ class Status(commands.Cog):
         except Exception:
             return discord.Status.dnd, "Server is offline"
 
-        if self.ServerType is MinecraftServer:
+        if self.ServerType is JavaServer:
             players_online = server.players.online
             players_max = server.players.max
-        elif self.ServerType is MinecraftBedrockServer:
+        elif self.ServerType is BedrockServer:
             players_online = server.players_online
             players_max = server.players_max
 
