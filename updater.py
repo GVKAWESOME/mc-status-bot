@@ -244,7 +244,7 @@ def run_config_adjustments(all_keys, formatted):
 
     change = y_n("Change info in config file?")
 
-    view_more = "View more about each option here: https://github.com/Fyssion/mc-status-bot#setup-details"
+    view_more = "View more about each option here: https://github.com/GVKAWESOME/mc-status-bot#setup-details"
 
     if not change:
         return
