@@ -67,8 +67,8 @@ class HelpCommand(commands.MinimalHelpCommand):
 
     async def command_callback(self, ctx, *, command=None):
         """Removes cog help from the help command.
-
-        This is essentially modified discord.py code.
+        
+        Updated for discord.py 2.0 (removed maybe_coroutine)
         """
         await self.prepare_help_command(ctx, command)
         bot = ctx.bot
@@ -77,27 +77,24 @@ class HelpCommand(commands.MinimalHelpCommand):
             mapping = self.get_bot_mapping()
             return await self.send_bot_help(mapping)
 
-        maybe_coro = discord.utils.maybe_coroutine
-
-        # If it's not a cog then it's a command.
-        # Since we want to have detailed errors when someone
-        # passes an invalid subcommand, we need to walk through
-        # the command group chain ourselves.
+        # In d.py 2.0, we just walk the commands directly.
         keys = command.split(" ")
         cmd = bot.all_commands.get(keys[0])
+        
         if cmd is None:
-            string = await maybe_coro(self.command_not_found, self.remove_mentions(keys[0]))
+            # command_not_found returns a string, send_error_message sends it
+            string = self.command_not_found(self.remove_mentions(keys[0]))
             return await self.send_error_message(string)
 
         for key in keys[1:]:
             try:
                 found = cmd.all_commands.get(key)
             except AttributeError:
-                string = await maybe_coro(self.subcommand_not_found, cmd, self.remove_mentions(key))
+                string = self.subcommand_not_found(cmd, self.remove_mentions(key))
                 return await self.send_error_message(string)
             else:
                 if found is None:
-                    string = await maybe_coro(self.subcommand_not_found, cmd, self.remove_mentions(key))
+                    string = self.subcommand_not_found(cmd, self.remove_mentions(key))
                     return await self.send_error_message(string)
                 cmd = found
 
@@ -106,12 +103,13 @@ class HelpCommand(commands.MinimalHelpCommand):
         else:
             return await self.send_command_help(cmd)
 
-
-def setup(bot):
+# 2.0 Migration: setup must be async
+async def setup(bot):
     bot._original_help_command = bot.help_command
     bot.help_command = HelpCommand()
 
-
-def teardown(bot):
+# 2.0 Migration: teardown must be async (if defined in a cog context, but here it's a module level function)
+# However, standard load_extension calls usually look for async setup. Teardown is usually handled by the cog or module unload.
+async def teardown(bot):
     bot.help_command = bot._original_help_command
     bot._original_help_command = None
