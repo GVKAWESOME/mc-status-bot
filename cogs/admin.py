@@ -12,7 +12,8 @@ class Admin(commands.Cog):
         self.bot = bot
 
     async def cog_check(self, ctx):
-        return await commands.is_owner().predicate(ctx)
+        # 2.0 Cleaner way to check for owner
+        return await self.bot.is_owner(ctx.author)
 
     @commands.command(name="logout", aliases=["shutdown"])
     async def logout(self, ctx):
@@ -22,6 +23,6 @@ class Admin(commands.Cog):
         await ctx.send("Logging out...")
         await self.bot.close()
 
-
-def setup(bot):
-    bot.add_cog(Admin(bot))
+# 2.0 Migration: setup must be async and use await bot.add_cog
+async def setup(bot):
+    await bot.add_cog(Admin(bot))
