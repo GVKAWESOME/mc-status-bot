@@ -21,7 +21,6 @@ log = logging.getLogger("bot")
 class ServerNotFound(commands.CommandError):
     def __init__(self, ip):
         self.ip = ip
-
         super().__init__(f"Could not find server with an IP of {ip}.")
 
 
@@ -50,7 +49,14 @@ class Status(commands.Cog):
             raise InvalidServerType(bot.config["server-type"])
 
         log.info(f"Looking up Minecraft server IP: {ip}")
-        self.server = Server.lookup(ip)
+        # Note: lookup is generally fast but technically blocking. 
+        # In strict async environments, this might ideally be threaded, 
+        # but is usually acceptable in __init__ if fast.
+        try:
+            self.server = Server.lookup(ip)
+        except Exception:
+            # Fallback if lookup fails immediately (e.g. DNS)
+            self.server = Server(ip)
 
         if not self.server:
             log.critical(f"Could not find server with an IP of {ip}.")
@@ -100,11 +106,19 @@ class Status(commands.Cog):
 
     def resolve_favicon(self, status):
         if status.favicon:
-            string = ",".join(status.favicon.split(",")[1:])
-            bytes = io.BytesIO(base64.b64decode(string))
-            bytes.seek(0)
+            # Handle potential API differences in mcstatus versions regarding favicon format
+            if isinstance(status.favicon, str) and "," in status.favicon:
+                string = ",".join(status.favicon.split(",")[1:])
+            else:
+                string = status.favicon
 
-            return discord.File(bytes, "favicon.png")
+            try:
+                data = base64.b64decode(string)
+                bytes_io = io.BytesIO(data)
+                bytes_io.seek(0)
+                return discord.File(bytes_io, "favicon.png")
+            except Exception:
+                pass
 
         return None
 
@@ -123,6 +137,8 @@ class Status(commands.Cog):
             status = None
             color = discord.Color.red()
             status_text = "Offline"
+            players_online = 0
+            players_max = 0
 
         else:
             if self.ServerType is JavaServer:
@@ -134,7 +150,7 @@ class Status(commands.Cog):
 
             players = f"{players_online}/{players_max}"
 
-            if players_online == players_max:
+            if players_online >= players_max and players_max > 0:
                 color = discord.Color.orange()
                 status_text = f"Full - {players}"
             else:
@@ -145,9 +161,8 @@ class Status(commands.Cog):
             motd = self._parse_motd(status)
             if len(motd) > 1024:
                 motd = motd[:1024] + "..."
-
         else:
-            motd = ""
+            motd = "Server is currently offline or unreachable."
 
         em = discord.Embed(title="Minecraft Server Info", description=motd, color=color)
 
@@ -161,11 +176,15 @@ class Status(commands.Cog):
         if status:
             if self.ServerType is JavaServer:
                 version = status.version.name
-
-                favicon = self.resolve_favicon(status)
-                if favicon:
-                    em.set_thumbnail(url="attachment://favicon.png")
-                    file = favicon
+                
+                # Try to resolve favicon
+                try:
+                    favicon = self.resolve_favicon(status)
+                    if favicon:
+                        em.set_thumbnail(url="attachment://favicon.png")
+                        file = favicon
+                except Exception:
+                    pass
 
             elif self.ServerType is BedrockServer:
                 version = f"{status.version.brand}: {status.version.protocol}"
@@ -173,8 +192,8 @@ class Status(commands.Cog):
                 if status.gamemode:
                     try:
                         gamemode = ["Survival", "Creative", "Adventure", "Spectator"][int(status.gamemode)]
-                    except (ValueError, TypeError):
-                        gamemode = status.gamemode
+                    except (ValueError, TypeError, IndexError):
+                        gamemode = str(status.gamemode)
                     em.add_field(name="Gamemode", value=gamemode)
 
             em.add_field(name="Version", value=version)
@@ -188,12 +207,15 @@ class Status(commands.Cog):
         """Set the IP for the server via command.
 
         This will automatically update the config file.
-        You must be thw owner of the bot to use this command.
+        You must be the owner of the bot to use this command.
         """
         partial = functools.partial(self.ServerType.lookup, ip)
 
         async with ctx.typing():
-            server = await self.bot.loop.run_in_executor(None, partial)
+            try:
+                server = await self.bot.loop.run_in_executor(None, partial)
+            except Exception:
+                server = None
 
         if not server:
             return await ctx.send("Could not find that server")
@@ -220,8 +242,9 @@ class Status(commands.Cog):
 
         # We only want to send a request if the status is different
         # or if the status is not set.
-        # The below returns if either of those requirements are not met.
-        now = datetime.datetime.utcnow()
+        # Updated datetime.utcnow() -> datetime.now(datetime.timezone.utc) for Py 3.12+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        
         if (
             not force
             and self.last_set
@@ -234,6 +257,7 @@ class Status(commands.Cog):
         await self.bot.change_presence(status=status, activity=game)
         self.status = status
         self.activity = game
+        self.last_set = now
 
         log.info(f"Set status to {status}: {text}")
 
@@ -242,6 +266,8 @@ class Status(commands.Cog):
             motd = server.description
         elif self.ServerType is BedrockServer:
             motd = server.motd
+        else:
+            return "Unknown"
 
         if isinstance(motd, dict):
             description = motd.get("text", "")
@@ -253,6 +279,7 @@ class Status(commands.Cog):
         else:
             description = str(motd)
 
+        # Regex to strip color codes
         description = re.sub(r"§.", "", description)
 
         return description
@@ -272,32 +299,27 @@ class Status(commands.Cog):
             players_online = server.players_online
             players_max = server.players_max
 
-        if players_online == players_max:
+        if players_online >= players_max and players_max > 0:
             status = discord.Status.idle
         else:
             status = discord.Status.online
 
-        maintenance_text = self.bot.config["maintenance-mode-detection"]
+        maintenance_text = self.bot.config.get("maintenance-mode-detection")
         if maintenance_text:
-            # somehow some people have this not as a string
             if not isinstance(maintenance_text, str):
                 logging.warning(
-                    "maintenance-mode-detection has been set, but is not a vaild type. "
+                    "maintenance-mode-detection has been set, but is not a valid type. "
                     f"It must be a string, but is a {type(maintenance_text)} instead."
                 )
-                return None
-
-            # I guess the status can be a dict?
-            description = self._parse_motd(server)
-
-            if maintenance_text.lower() in description.lower():
-                return discord.Status.dnd, "Server is in maintenence mode"
+            else:
+                description = self._parse_motd(server)
+                if maintenance_text.lower() in description.lower():
+                    return discord.Status.dnd, "Server is in maintenance mode"
 
         return status, f"{players_online}/{players_max} online"
 
     async def update_status(self, *, force=False):
         status, text = await self.get_status()
-
         await self.set_status(status, text, force=force)
 
     @tasks.loop(seconds=60)
@@ -312,10 +334,10 @@ class Status(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild):
-        if len(self.guilds) == 1:
+        if len(self.bot.guilds) == 1:
             log.info("Joined first guild, setting status")
             await self.update_status()
 
-
-def setup(bot):
-    bot.add_cog(Status(bot))
+# 2.0 Migration: setup must be async and use await bot.add_cog
+async def setup(bot):
+    await bot.add_cog(Status(bot))
