@@ -13,7 +13,7 @@ class HelpCommand(commands.MinimalHelpCommand):
         command_name = self.invoked_with
         if not command_name:
             command_name = "help"
-        # FIX: self.clean_prefix -> self.context.clean_prefix
+        # FIX IS HERE: changed self.clean_prefix -> self.context.clean_prefix
         return "Use `{0}{1} [command]` for more info on a command.".format(self.context.clean_prefix, command_name)
 
     def add_bot_commands_formatting(self, commands):
@@ -25,11 +25,11 @@ class HelpCommand(commands.MinimalHelpCommand):
         short_doc = command.short_doc if command.short_doc else ""
         if short_doc:
             fmt = "`{0}{1}` \N{EN DASH} {2}"
-            # FIX: self.clean_prefix -> self.context.clean_prefix
+            # FIX IS HERE
             self.paginator.add_line(fmt.format(self.context.clean_prefix, command.qualified_name, short_doc))
         else:
             fmt = "`{0}{1}`"
-            # FIX: self.clean_prefix -> self.context.clean_prefix
+            # FIX IS HERE
             self.paginator.add_line(fmt.format(self.context.clean_prefix, command.qualified_name))
 
     def add_command_formatting(self, command):
