@@ -11,6 +11,8 @@ class HelpCommand(commands.MinimalHelpCommand):
 
     def get_opening_note(self):
         command_name = self.invoked_with
+        if not command_name:
+            command_name = "help"
         return "Use `{0}{1} [command]` for more info on a command.".format(self.clean_prefix, command_name)
 
     def add_bot_commands_formatting(self, commands):
@@ -18,8 +20,14 @@ class HelpCommand(commands.MinimalHelpCommand):
             self.add_subcommand_formatting(command)
 
     def add_subcommand_formatting(self, command):
-        fmt = "`{0}{1}` \N{EN DASH} {2}" if command.short_doc else "`{0}{1}`"
-        self.paginator.add_line(fmt.format(self.clean_prefix, command.qualified_name, command.short_doc))
+        # Safer check for short_doc
+        short_doc = command.short_doc if command.short_doc else ""
+        if short_doc:
+            fmt = "`{0}{1}` \N{EN DASH} {2}"
+            self.paginator.add_line(fmt.format(self.clean_prefix, command.qualified_name, short_doc))
+        else:
+            fmt = "`{0}{1}`"
+            self.paginator.add_line(fmt.format(self.clean_prefix, command.qualified_name))
 
     def add_command_formatting(self, command):
         if command.description:
@@ -53,7 +61,12 @@ class HelpCommand(commands.MinimalHelpCommand):
 
         self.paginator.add_line("**Commands**")
 
-        filtered = await self.filter_commands(bot.commands, sort=True)
+        # 2.0 Standard way to get all commands from mapping
+        all_commands = []
+        for cog, cmds in mapping.items():
+            all_commands.extend(cmds)
+
+        filtered = await self.filter_commands(all_commands, sort=True)
 
         commands = sorted(filtered, key=lambda c: c.name) if self.sort_commands else list(filtered)
         self.add_bot_commands_formatting(commands)
@@ -66,10 +79,7 @@ class HelpCommand(commands.MinimalHelpCommand):
         await self.send_pages()
 
     async def command_callback(self, ctx, *, command=None):
-        """Removes cog help from the help command.
-        
-        Updated for discord.py 2.0 (removed maybe_coroutine)
-        """
+        """Removes cog help from the help command."""
         await self.prepare_help_command(ctx, command)
         bot = ctx.bot
 
@@ -77,12 +87,10 @@ class HelpCommand(commands.MinimalHelpCommand):
             mapping = self.get_bot_mapping()
             return await self.send_bot_help(mapping)
 
-        # In d.py 2.0, we just walk the commands directly.
         keys = command.split(" ")
         cmd = bot.all_commands.get(keys[0])
         
         if cmd is None:
-            # command_not_found returns a string, send_error_message sends it
             string = self.command_not_found(self.remove_mentions(keys[0]))
             return await self.send_error_message(string)
 
@@ -103,13 +111,7 @@ class HelpCommand(commands.MinimalHelpCommand):
         else:
             return await self.send_command_help(cmd)
 
-# 2.0 Migration: setup must be async
+
 async def setup(bot):
     bot._original_help_command = bot.help_command
     bot.help_command = HelpCommand()
-
-# 2.0 Migration: teardown must be async (if defined in a cog context, but here it's a module level function)
-# However, standard load_extension calls usually look for async setup. Teardown is usually handled by the cog or module unload.
-async def teardown(bot):
-    bot.help_command = bot._original_help_command
-    bot._original_help_command = None
