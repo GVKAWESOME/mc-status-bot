@@ -13,7 +13,8 @@ class HelpCommand(commands.MinimalHelpCommand):
         command_name = self.invoked_with
         if not command_name:
             command_name = "help"
-        return "Use `{0}{1} [command]` for more info on a command.".format(self.clean_prefix, command_name)
+        # FIX: self.clean_prefix -> self.context.clean_prefix
+        return "Use `{0}{1} [command]` for more info on a command.".format(self.context.clean_prefix, command_name)
 
     def add_bot_commands_formatting(self, commands):
         for command in commands:
@@ -24,10 +25,12 @@ class HelpCommand(commands.MinimalHelpCommand):
         short_doc = command.short_doc if command.short_doc else ""
         if short_doc:
             fmt = "`{0}{1}` \N{EN DASH} {2}"
-            self.paginator.add_line(fmt.format(self.clean_prefix, command.qualified_name, short_doc))
+            # FIX: self.clean_prefix -> self.context.clean_prefix
+            self.paginator.add_line(fmt.format(self.context.clean_prefix, command.qualified_name, short_doc))
         else:
             fmt = "`{0}{1}`"
-            self.paginator.add_line(fmt.format(self.clean_prefix, command.qualified_name))
+            # FIX: self.clean_prefix -> self.context.clean_prefix
+            self.paginator.add_line(fmt.format(self.context.clean_prefix, command.qualified_name))
 
     def add_command_formatting(self, command):
         if command.description:
@@ -61,7 +64,6 @@ class HelpCommand(commands.MinimalHelpCommand):
 
         self.paginator.add_line("**Commands**")
 
-        # 2.0 Standard way to get all commands from mapping
         all_commands = []
         for cog, cmds in mapping.items():
             all_commands.extend(cmds)
