@@ -6,16 +6,24 @@ import logging
 import sys
 import traceback
 
-# discord.VoiceClient.warn_nacl = False  # Deprecated in 2.0, usually not needed.
-
+# 1. Setup Logging first
 formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S")
 handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 
+# Discord Logger
 logger = logging.getLogger("discord")
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)
 
+# Filter out the PyNaCl warning since we don't need voice
+class PyNaClFilter(logging.Filter):
+    def filter(self, record):
+        return "PyNaCl is not installed" not in record.getMessage()
+
+logging.getLogger("discord.client").addFilter(PyNaClFilter())
+
+# Bot Logger
 log = logging.getLogger("bot")
 log.setLevel(logging.INFO)
 log.addHandler(handler)
@@ -54,7 +62,7 @@ A simple Discord bot that displays the status and player count of a Minecraft se
 
 class ServerStatus(commands.Bot):
     def __init__(self):
-        # 2.0 Migration: Intents are mandatory. Message Content is privileged.
+        # Intents are mandatory in 2.0+
         intents = discord.Intents.default()
         intents.message_content = True
         intents.guilds = True
@@ -88,7 +96,6 @@ class ServerStatus(commands.Bot):
         with open(filename, "r") as f:
             return yaml.safe_load(f)
 
-    # 2.0 Migration: setup_hook is the new place for async startup logic
     async def setup_hook(self):
         log.info("Loading extensions...")
         for extension in initial_extensions:
@@ -106,19 +113,9 @@ class ServerStatus(commands.Bot):
         except Exception:
             log.info("jishaku is not installed, continuing...")
 
-        log.info("Setting initial status before logging in...")
-        status_cog = self.get_cog("Status")
-        
-        if status_cog:
-            try:
-                # Assuming status_cog.get_status() is async. 
-                # If it's sync in your old code, remove the 'await'
-                status, text = await status_cog.get_status()
-                game = discord.Game(text)
-                status_cog.activity = game
-                await self.change_presence(activity=game, status=status)
-            except Exception as e:
-                log.error(f"Failed to set initial status: {e}")
+        # We removed the pre-login status update here because the bot 
+        # is not connected to the websocket yet. The Status cog will 
+        # handle the first update automatically upon login.
 
     async def on_command(self, ctx):
         destination = None
@@ -188,7 +185,7 @@ class ServerStatus(commands.Bot):
 
     def run(self):
         log.info("Logging into Discord...")
-        # log_handler=None prevents discord.py from overriding your custom logging setup
+        # log_handler=None ensures we use the custom logging setup defined at the top
         super().run(self.config["bot-token"], log_handler=None)
 
 
