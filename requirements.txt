@@ -1,6 +1,6 @@
 discord.py==2.0.1
 mcstatus
-aiohttp==3.7.4
+aiohttp==3.14.4
 pyyaml
 audioop-lts
 legacy-cgi
